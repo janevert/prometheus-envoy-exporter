@@ -75,6 +75,8 @@ production_inverters_watt_hour_lifetime_exporter = Gauge('envoy_production_inver
 envoy_data_request_duration_exporter = Gauge('envoy_data_request_duration_seconds', 'The total time it took to request data from the envoy, in seconds.')
 envoy_inventory_request_duration_exporter = Gauge('envoy_inventory_request_duration_seconds', 'The time it took to request inventory from the envoy, in seconds')
 envoy_production_request_duration_exporter = Gauge('envoy_production_request_duration_seconds', 'The time it took to request production data from the envoy, in seconds')
+envoy_inventory_request_failed_exporter = Gauge('envoy_inventory_request_failed_count', 'Sequential counter of failed requests, reset on successful request.')
+envoy_production_request_failed_exporter = Gauge('envoy_production_request_failed_count', 'Sequential counter of failed requests, reset on successful request.')
 
 class DeviceData(object):
     class DeviceType(Enum):
@@ -249,16 +251,16 @@ class ExporterRequestHandler(MetricsHandler):
 
 class EnvoyRequest(object):
 
-    name = None
-    request_address = None
-    last_text = None
-    last_json = None
-    last_update_time = 0
-    last_update_duration = 0
-
     def __init__(self, name, address):
         self.name = name
         self.request_address = address
+
+        self.last_text = None
+        self.last_json = None
+        self.last_update_time = 0
+        self.last_update_duration = 0
+        self.failed_request_count = 0
+        self.my_failed_request_exporter = None
 
     def convert_data(self):
         """ Data specific converter. """
@@ -272,7 +274,11 @@ class EnvoyRequest(object):
             response = requests.get("http://%s/%s" % (envoy_address, self.request_address), allow_redirects=False, timeout=3)
         except Exception as e:
             logging.error('Failed to request %s from envoy: %s' % (self.name, str(e)))
+            self.failed_request_count += 1
+            self.my_failed_request_exporter.set(self.failed_request_count)
             return
+        self.failed_request_count = 0
+        self.my_failed_request_exporter.set(self.failed_request_count)
         request_end = time.time()
         logging.info('%s response from envoy. status code %d, length %d, duration %.3fs' % (self.name, response.status_code, len(response.content), request_end - request_start))
         if response.status_code != requests.codes.ok:
@@ -341,6 +347,7 @@ class InventoryRequest(EnvoyRequest):
 
     def __init__(self):
         super().__init__('inventory', 'inventory.json')
+        self.my_failed_request_exporter = envoy_inventory_request_failed_exporter
 
     def convert_data(self):
         envoy_inventory_request_duration_exporter.set(self.last_update_duration)
@@ -379,6 +386,7 @@ class ProductionRequest(EnvoyRequest):
 
     def __init__(self):
         super().__init__('production', 'production.json?details=1')
+        self.my_failed_request_exporter = envoy_production_request_failed_exporter
 
     def convert_data(self):
         envoy_production_request_duration_exporter.set(self.last_update_duration)
