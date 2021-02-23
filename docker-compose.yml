@@ -1,0 +1,10 @@
+version: '3.1'
+
+services:
+  prometheus-envoy-exporter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - 19101:9101

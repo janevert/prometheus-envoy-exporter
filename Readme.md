@@ -21,4 +21,9 @@ The minimum time between requests to the envoy is by default 10s.
 
 Use the -d flag to get more diagnostics.
 
+Docker
+======
 
+See the included Dockerfile and docker-compose.yml for examples how it can be used with Docker.
+
+When using Docker, the output of the script is available from 'docker logs' and 'docker-compose logs'.
